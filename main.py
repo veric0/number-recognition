@@ -1,3 +1,5 @@
+import os
+import threading
 import time
 import tkinter as tk
 import cv2
@@ -9,12 +11,17 @@ class App:
     def __init__(self, root, window_title):
         self.root = root
         self.root.title(window_title)
-        self.cap = cv2.VideoCapture(0)
-        self.cap.set(3, 640)  # Ширина
-        self.cap.set(4, 480)  # Висота
+        self.cap = cv2.VideoCapture(0) # номер камери
+        self.cap.set(3, 640)  # Ширина камери
+        self.cap.set(4, 480)  # Висота камери
 
+        # налаштування:
         self.min_size = 100  # мінімальний розмір числа в пікселях [0:]
         self.threshold = 110  # межа між 0 і 1. [0; 255]
+        self.scaled_size = (40, 30)  # розмір вихідного зображення
+        self.border_color = (0, 255, 0)  # колір рамки навколо об'єктів
+        self.border_thickness = 1  # товщина рамки в пікселях
+
         self.frame_delay = 10  # ms
         self.BLACK = np.uint8(0)
         self.WHITE = np.uint8(255)
@@ -25,13 +32,9 @@ class App:
         self.one_bit_image = None
         self.obj_count = 0
         self.obj_bounds = np.zeros((self.EDGE, 4), dtype=np.uint16)
+        self.lock = threading.Lock()  # Створюємо об'єкт блокування
 
-        self.highlighted_image = None
-        self.clear_image = None
-        self.scaled_images = None
-        self.objects = []
-
-        # Отримання списку доступних камер
+        # todo вибір камери
         # camera_info = cv2.getBuildInformation()
         # camera_list = [f'Камера {i}' for i in range(4)]
         # self.available_cameras = camera_list
@@ -56,7 +59,7 @@ class App:
         self.update_value_button = tk.Button(root, text="Оновити параметри", command=self.update_entry_value)
         self.update_value_button.grid(row=5, column=0, columnspan=2)
 
-        self.save_button = tk.Button(root, text="Зберегти у файл", command=self.update_entry_value)  # todo
+        self.save_button = tk.Button(root, text="Зберегти у файл", command=self.start_resize_thread)
         self.save_button.grid(row=7, column=0, columnspan=2)
 
         self.left_label = tk.Label(root)
@@ -66,7 +69,6 @@ class App:
         self.right_label.grid(row=0, column=1)
 
         self.update_entry_value()
-        # self.run()
         # self.update_frame()  # no timer
         # self.update_frame_2()  # long timer
         self.update_frame_3()  # short timer
@@ -250,32 +252,49 @@ class App:
                 self.obj_bounds[k, 3] = obj_k_max_y  # якщо це крайнє праве
 
     def draw_rectangles(self):  # малюємо усі прямокутники
-        GREEN_COLOR = (0, 255, 0)
-        LINE_THICKNESS = 1
-
         for k in range(1, self.obj_count):
             x1 = int(self.obj_bounds[k, 0])
             y1 = int(self.obj_bounds[k, 1])
             x2 = int(self.obj_bounds[k, 2])
             y2 = int(self.obj_bounds[k, 3])
-            cv2.rectangle(self.image, (y1, x1), (y2, x2), GREEN_COLOR, LINE_THICKNESS)
+            cv2.rectangle(self.image, (y1, x1), (y2, x2), self.border_color, self.border_thickness)
             # cv2.rectangle(self.one_bit_image, (y1, x1), (y2, x2), 0, LINE_THICKNESS)
 
-    # TODO
-    # def resize(self):
-    #     return
-    #
-    # def save_into_txt(self):
-    #     return
-    #
-    # def process_image(self):
-    #     return
-    #
-    # def draw_and_resize(self):
-    #     self.draw_rectangles()
-    #     self.resize()
+    def start_resize_thread(self):
+        # Створюємо новий потік і передаємо параметри функції resize
+        resize_thread = threading.Thread(target=self.resize_and_save,
+                                         args=(self.one_bit_image.copy(), self.obj_bounds.copy(), self.obj_count))
+        resize_thread.start()
 
-    def update_entry_value(self):
+    def resize_and_save(self, bw_image, bounds, count):
+        for rt, dirs, files in os.walk("scaled_objects"):  # видаляємо попередні об'єкти із папки
+            for file in files:
+                file_path = os.path.join(rt, file)
+                os.remove(file_path)
+
+        def process_image_in_thread(i: int):
+            x1 = int(bounds[i, 0])
+            y1 = int(bounds[i, 1])
+            x2 = int(bounds[i, 2])
+            y2 = int(bounds[i, 3])
+            cropped_image = bw_image[x1:x2, y1:y2].copy()  # обрізаємо зайве
+            cropped_image[cropped_image == i] = self.BLACK  # робимо чорно-білим
+            cropped_image[cropped_image != self.BLACK] = self.WHITE
+            resized_image = cv2.resize(cropped_image, self.scaled_size)  # змінюємо розмір
+            cv2.imwrite(f"scaled_objects/object_{i}.png", resized_image)  # зберігаємо у файл
+
+        for k in range(1, count):
+            process_image_in_thread(k)
+
+        # threads = []  # same time
+        # for k in range(1, count):
+        #     thread = threading.Thread(target=process_image_in_thread, args=(k,))
+        #     threads.append(thread)
+        #     thread.start()
+        # for thread in threads:
+        #     thread.join()
+
+    def update_entry_value(self):  # todo check bounds
         self.min_size = int(self.entry_min_size.get())
         self.threshold = int(self.entry_threshold.get())
 
