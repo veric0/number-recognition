@@ -44,29 +44,32 @@ class App:
         # self.start_button = tk.Button(window, text="Старт", command=self.start_camera)
         # self.start_button.pack()
 
+        self.left_label = tk.Label(self.root, text="Зображення з камери:")
+        self.left_label.grid(row=0, column=0)
+        self.right_label = tk.Label(self.root, text="Машинне зображення:")
+        self.right_label.grid(row=0, column=1)
+
+        self.left_image = tk.Label(self.root)
+        self.left_image.grid(row=1, column=0)
+        self.right_image = tk.Label(self.root)
+        self.right_image.grid(row=1, column=1)
+
         self.label_min_size = tk.Label(self.root, text="Мінімальний розмір об'єкта в пікселях:  [0:]")
-        self.label_min_size.grid(row=1, column=0, columnspan=2)
+        self.label_min_size.grid(row=2, column=0, columnspan=2)
         self.entry_min_size = tk.Entry(self.root)
-        self.entry_min_size.grid(row=2, column=0, columnspan=2)
+        self.entry_min_size.grid(row=3, column=0, columnspan=2)
         self.entry_min_size.insert(0, str(self.min_size))
 
         self.label_threshold = tk.Label(self.root, text="Межа між 0 і 1:  [0:255]")
-        self.label_threshold.grid(row=3, column=0, columnspan=2)
+        self.label_threshold.grid(row=4, column=0, columnspan=2)
         self.entry_threshold = tk.Entry(self.root)
-        self.entry_threshold.grid(row=4, column=0, columnspan=2)
+        self.entry_threshold.grid(row=5, column=0, columnspan=2)
         self.entry_threshold.insert(0, str(self.threshold))
 
-        self.update_value_button = tk.Button(root, text="Оновити параметри", command=self.update_entry_value)
-        self.update_value_button.grid(row=5, column=0, columnspan=2)
-
-        self.save_button = tk.Button(root, text="Зберегти у файл", command=self.start_resize_thread)
+        self.update_value_button = tk.Button(self.root, text="Оновити параметри", command=self.update_entry_value)
+        self.update_value_button.grid(row=6, column=0, columnspan=2)
+        self.save_button = tk.Button(self.root, text="Зберегти у файл", command=self.start_resize_thread)
         self.save_button.grid(row=7, column=0, columnspan=2)
-
-        self.left_label = tk.Label(root)
-        self.left_label.grid(row=0, column=0)
-
-        self.right_label = tk.Label(root)
-        self.right_label.grid(row=0, column=1)
 
         self.update_entry_value()
         # self.update_frame()  # no timer
@@ -95,10 +98,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.left_label.config(image=photo)
-            self.left_label.image = photo
-            self.right_label.config(image=photo_bw)
-            self.right_label.image = photo_bw
+            self.left_image.config(image=photo)
+            self.left_image.image = photo
+            self.right_image.config(image=photo_bw)
+            self.right_image.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame)
 
@@ -140,10 +143,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.left_label.config(image=photo)
-            self.left_label.image = photo
-            self.right_label.config(image=photo_bw)
-            self.right_label.image = photo_bw
+            self.left_image.config(image=photo)
+            self.left_image.image = photo
+            self.right_image.config(image=photo_bw)
+            self.right_image.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_2)
 
@@ -166,10 +169,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.left_label.config(image=photo)
-            self.left_label.image = photo
-            self.right_label.config(image=photo_bw)
-            self.right_label.image = photo_bw
+            self.left_image.config(image=photo)
+            self.left_image.image = photo
+            self.right_image.config(image=photo_bw)
+            self.right_image.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_3)
 
@@ -177,7 +180,7 @@ class App:
         gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         self.one_bit_image = np.where(gray_image > self.threshold, self.WHITE, self.BLACK)
 
-    def highlight_edge_connected_region(self):  # забирає чорні об'єкти які торкаються країв
+    def highlight_edge_connected_region(self):  # забирає чорні об'єкти які торкаються країв todo speed up
         # Get image dimensions
         width, height = self.one_bit_image.shape
 
@@ -203,7 +206,7 @@ class App:
             boundary_fill(0, j)
             boundary_fill(width - 1, j)
 
-    def find_objects(self):  # розділяє чорні об'єкти (0) на різні об'єкти (1,2,3,4...)
+    def find_objects(self):  # розділяє чорні об'єкти (0) на різні об'єкти (1,2,3,4...) todo speed up too
         width, height = self.one_bit_image.shape
 
         def fill_objects(x, y, prev_color, fill_color):
