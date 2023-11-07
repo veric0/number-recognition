@@ -1,5 +1,5 @@
 import os
-import threading
+import sys
 import time
 import tkinter as tk
 import cv2
@@ -11,16 +11,20 @@ class App:
     def __init__(self, root, window_title):
         self.root = root
         self.root.title(window_title)
-        self.cap = cv2.VideoCapture(0) # номер камери
-        self.cap.set(3, 640)  # Ширина камери
-        self.cap.set(4, 480)  # Висота камери
+        self.cap = cv2.VideoCapture(0)      # номер камери
+        self.cap.set(3, 640)    # Ширина камери
+        self.cap.set(4, 480)    # Висота камери
 
         # налаштування:
-        self.min_size = 100  # мінімальний розмір числа в пікселях [0:]
-        self.threshold = 110  # межа між 0 і 1. [0; 255]
-        self.scaled_size = (40, 30)  # розмір вихідного зображення
-        self.border_color = (0, 255, 0)  # колір рамки навколо об'єктів
-        self.border_thickness = 1  # товщина рамки в пікселях
+        self.min_size = 100             # мінімальний розмір числа в пікселях [0:]
+        self.threshold = 110            # межа між 0 і 1. [0; 255]
+        self.scaled_size = (40, 30)     # розмір вихідного зображення
+        self.line_color = (0, 255, 0)   # колір рамки навколо об'єктів
+        self.text_color = (0, 255, 0)   # колір рамки навколо об'єктів
+        self.line_thickness = 1         # товщина рамки в пікселях
+        self.font = cv2.FONT_HERSHEY_SIMPLEX  # шрифт тексту на камері
+        self.is_mu_max = False          # True - максимальне значення, False - мінімальне
+        self.mu_threshold = 0.5         # мінімальний допустимий коефіцієнт
 
         self.frame_delay = 10  # ms
         self.BLACK = np.uint8(0)
@@ -32,7 +36,8 @@ class App:
         self.one_bit_image = None
         self.obj_count = 0
         self.obj_bounds = np.zeros((self.EDGE, 4), dtype=np.uint16)
-        self.lock = threading.Lock()  # Створюємо об'єкт блокування
+        self.object_mu = np.zeros((self.EDGE, 11), dtype=float)  # 10 для кожної цифри + індекс класифікованого
+        self.standards = None
 
         # todo вибір камери
         # camera_info = cv2.getBuildInformation()
@@ -68,9 +73,14 @@ class App:
 
         self.update_value_button = tk.Button(self.root, text="Оновити параметри", command=self.update_entry_value)
         self.update_value_button.grid(row=6, column=0, columnspan=2)
-        self.save_button = tk.Button(self.root, text="Зберегти у файл", command=self.start_resize_thread)
+        self.save_button = tk.Button(self.root, text="Зберегти у файл", command=self.resize_and_save)
         self.save_button.grid(row=7, column=0, columnspan=2)
 
+        self.is_classification = tk.IntVar()
+        self.checkbox = tk.Checkbutton(self.root, text="Класифікувати", variable=self.is_classification)
+        self.checkbox.grid(row=8, column=0, columnspan=2)
+
+        self.load_standards()
         self.update_entry_value()
         # self.update_frame()  # no timer
         # self.update_frame_2()  # long timer
@@ -94,6 +104,9 @@ class App:
             self.find_rectangles_borders()
             # Намалювати прямокутник на кадрі
             self.draw_rectangles()
+            # класифікація об'єктів
+            if self.is_classification.get() == 1:
+                self.classify()
 
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
@@ -138,6 +151,12 @@ class App:
             end_time = time.time()
             execution_time = end_time - start_time
             print("Time 6 draws: ", execution_time * 1000)
+            start_time = time.time()
+            if self.is_classification.get() == 1:
+                self.classify()
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print("Time 7 class: ", execution_time * 1000)
             print('.')
 
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
@@ -161,6 +180,8 @@ class App:
             self.find_objects()
             self.find_rectangles_borders()
             self.draw_rectangles()
+            if self.is_classification.get() == 1:
+                self.classify()
 
             end_time = time.time()
             execution_time = end_time - start_time
@@ -260,42 +281,77 @@ class App:
             y1 = int(self.obj_bounds[k, 1])
             x2 = int(self.obj_bounds[k, 2])
             y2 = int(self.obj_bounds[k, 3])
-            cv2.rectangle(self.image, (y1, x1), (y2, x2), self.border_color, self.border_thickness)
-            # cv2.rectangle(self.one_bit_image, (y1, x1), (y2, x2), 0, LINE_THICKNESS)
+            cv2.rectangle(self.image, (y1, x1), (y2, x2), self.line_color, self.line_thickness)
+            # cv2.rectangle(self.one_bit_image, (y1, x1), (y2, x2), self.line_color, self.line_thickness)
 
-    def start_resize_thread(self):
-        # Створюємо новий потік і передаємо параметри функції resize
-        resize_thread = threading.Thread(target=self.resize_and_save,
-                                         args=(self.one_bit_image.copy(), self.obj_bounds.copy(), self.obj_count))
-        resize_thread.start()
+    def resize_obj(self, k):
+        x1 = int(self.obj_bounds[k, 0])
+        y1 = int(self.obj_bounds[k, 1])
+        x2 = int(self.obj_bounds[k, 2])
+        y2 = int(self.obj_bounds[k, 3])
+        cropped_image = self.one_bit_image[x1:x2, y1:y2].copy()  # обрізаємо зайве
+        cropped_image[cropped_image == k] = self.BLACK  # робимо чорно-білим
+        cropped_image[cropped_image != self.BLACK] = self.WHITE
+        resized_image = cv2.resize(cropped_image, self.scaled_size)  # змінюємо розмір
+        return resized_image
 
-    def resize_and_save(self, bw_image, bounds, count):
+    def resize_and_save(self):
         for rt, dirs, files in os.walk("scaled_objects"):  # видаляємо попередні об'єкти із папки
             for file in files:
                 file_path = os.path.join(rt, file)
                 os.remove(file_path)
+        for k in range(1, self.obj_count):
+            resized_image = self.resize_obj(k)
+            cv2.imwrite(f"scaled_objects/png/object_№{k}.png", resized_image)  # зберігаємо у файл 
+            np.savetxt(f"scaled_objects/txt/object_№{k}.txt", resized_image, delimiter='\t', fmt='%d')
+            self.classify()  # todo remove second resize_obj
+            np.savetxt(f"scaled_objects/mu_object_№{k}=={int(self.object_mu[k, -1])}.txt",
+                       self.object_mu[k], fmt='%.4g')
 
-        def process_image_in_thread(i: int):
-            x1 = int(bounds[i, 0])
-            y1 = int(bounds[i, 1])
-            x2 = int(bounds[i, 2])
-            y2 = int(bounds[i, 3])
-            cropped_image = bw_image[x1:x2, y1:y2].copy()  # обрізаємо зайве
-            cropped_image[cropped_image == i] = self.BLACK  # робимо чорно-білим
-            cropped_image[cropped_image != self.BLACK] = self.WHITE
-            resized_image = cv2.resize(cropped_image, self.scaled_size)  # змінюємо розмір
-            cv2.imwrite(f"scaled_objects/object_{i}.png", resized_image)  # зберігаємо у файл
+    def classify(self):
+        for k in range(1, self.obj_count):
+            resized_image = self.resize_obj(k)
+            for d in range(10):
+                self.object_mu[k, d] = self.classify_func(d, resized_image)
 
-        for k in range(1, count):
-            process_image_in_thread(k)
+            if self.is_mu_max:  # mu --> max
+                self.object_mu[k, -1] = sys.float_info.min
+                index = np.argmax(self.object_mu[k])
+            else:  # mu --> min
+                self.object_mu[k, -1] = sys.float_info.max
+                index = np.argmin(self.object_mu[k])
+            mu = self.object_mu[k, index]
+            self.object_mu[k, -1] = index  # цифра яка найбільше підходить
 
-        # threads = []  # same time
-        # for k in range(1, count):
-        #     thread = threading.Thread(target=process_image_in_thread, args=(k,))
-        #     threads.append(thread)
-        #     thread.start()
-        # for thread in threads:
-        #     thread.join()
+            if (self.is_mu_max and mu > self.mu_threshold) or (not self.is_mu_max and mu < self.mu_threshold):
+                # text = f'{index}={mu:.2f}'
+                text = str(index)
+            else:
+                # text = f'?={mu:.2f}'
+                text = '?'
+
+            x1 = int(self.obj_bounds[k, 0])
+            y1 = int(self.obj_bounds[k, 1])
+            org = y1, x1 + 13  # зміщення вниз
+            font_scale = 0.5
+            self.image = cv2.putText(self.image, text, org, self.font, font_scale,
+                                     self.text_color, self.line_thickness, cv2.LINE_AA)
+
+    def classify_func(self, d, tested_object):
+        standard = self.standards[d]
+        if standard.shape != tested_object.shape:
+            print(standard.shape)
+            print(tested_object.shape)
+            raise ValueError("Розміри матриць не збігаються")
+
+        # todo змінити варіант, max/min, mu_threshold
+        return np.sum(tested_object * standard) / np.sum(tested_object * tested_object)  # 3 варіант
+
+    def load_standards(self):
+        self.standards = []
+        for d in range(10):
+            s = np.loadtxt(f"standards/standard_{d}.txt", dtype=np.uint8)
+            self.standards.append(s)
 
     def update_entry_value(self):  # todo check bounds
         self.min_size = int(self.entry_min_size.get())
