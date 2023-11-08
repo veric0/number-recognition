@@ -12,6 +12,10 @@ class App:
         self.root = root
         self.root.title(window_title)
         self.cap = cv2.VideoCapture(0)      # номер камери
+        if not self.cap.isOpened():
+            print("Camera not available")
+            self.on_closing()
+            exit(1)
         self.cap.set(3, 640)    # Ширина камери
         self.cap.set(4, 480)    # Висота камери
 
