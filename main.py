@@ -353,9 +353,13 @@ class App:
             s = np.loadtxt(f"standards/standard_{d}.txt", dtype=np.uint8)
             self.standards.append(s)
 
-    def update_entry_value(self):  # todo check bounds
-        self.min_size = int(self.entry_min_size.get())
-        self.threshold = int(self.entry_threshold.get())
+    def update_entry_value(self):
+        min_size = int(self.entry_min_size.get())
+        threshold = int(self.entry_threshold.get())
+        if 0 <= min_size <= 5000:
+            self.min_size = min_size
+        if 0 <= threshold <= 255:
+            self.threshold = threshold
 
     def on_closing(self):
         self.cap.release()
