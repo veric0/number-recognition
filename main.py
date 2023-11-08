@@ -24,7 +24,7 @@ class App:
         self.threshold = 110            # межа між 0 і 1. [0; 255]
         self.scaled_size = (40, 30)     # розмір вихідного зображення
         self.line_color = (0, 255, 0)   # колір рамки навколо об'єктів
-        self.text_color = (0, 255, 0)   # колір рамки навколо об'єктів
+        self.text_color = (255, 0, 0)   # колір рамки навколо об'єктів
         self.line_thickness = 1         # товщина рамки в пікселях
         self.font = cv2.FONT_HERSHEY_SIMPLEX  # шрифт тексту на камері
         self.is_mu_max = False          # True - максимальне значення, False - мінімальне
