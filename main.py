@@ -17,11 +17,11 @@ class App:
             self.on_closing()
             exit(1)
         self.cap.set(3, 640)    # Ширина камери
-        self.cap.set(4, 480)    # Висота камери
+        self.cap.set(4, 360)    # Висота камери
 
         # налаштування:
         self.min_size = 100             # мінімальний розмір числа в пікселях [0:]
-        self.threshold = 110            # межа між 0 і 1. [0; 255]
+        self.threshold_N = 120            # межа між 0 і 1. [0; 255]
         self.scaled_size = (40, 30)     # розмір вихідного зображення
         self.line_color = (0, 255, 0)   # колір рамки навколо об'єктів
         self.text_color = (255, 0, 0)   # колір рамки навколо об'єктів
@@ -37,7 +37,10 @@ class App:
         self.ONE = np.uint8(1)
 
         self.image = None
+        self.gray_image = None
         self.one_bit_image = None
+        self.one_bit_image_1 = None
+        self.one_bit_image_2 = None
         self.obj_count = 0
         self.obj_bounds = np.zeros((self.EDGE, 4), dtype=np.uint16)
         self.object_mu = np.zeros((self.EDGE, 11), dtype=float)  # 10 для кожної цифри + індекс класифікованого
@@ -55,40 +58,48 @@ class App:
 
         self.left_label = tk.Label(self.root, text="Зображення з камери:")
         self.left_label.grid(row=0, column=0)
-        self.right_label = tk.Label(self.root, text="Машинне зображення:")
+        self.right_label = tk.Label(self.root, text="Global thresholding:")
         self.right_label.grid(row=0, column=1)
+        self.left_label = tk.Label(self.root, text="Adaptive mean thresholding:")
+        self.left_label.grid(row=2, column=0)
+        self.right_label = tk.Label(self.root, text="Otsu's thresholding:")
+        self.right_label.grid(row=2, column=1)
 
-        self.left_image = tk.Label(self.root)
-        self.left_image.grid(row=1, column=0)
-        self.right_image = tk.Label(self.root)
-        self.right_image.grid(row=1, column=1)
+        self.image_1 = tk.Label(self.root)
+        self.image_1.grid(row=1, column=0)
+        self.image_2 = tk.Label(self.root)
+        self.image_2.grid(row=1, column=1)
+        self.image_3 = tk.Label(self.root)
+        self.image_3.grid(row=3, column=0)
+        self.image_4 = tk.Label(self.root)
+        self.image_4.grid(row=3, column=1)
 
         self.label_min_size = tk.Label(self.root, text="Мінімальний розмір об'єкта в пікселях:  [0:]")
-        self.label_min_size.grid(row=2, column=0, columnspan=2)
+        self.label_min_size.grid(row=4, column=0, columnspan=2)
         self.entry_min_size = tk.Entry(self.root)
-        self.entry_min_size.grid(row=3, column=0, columnspan=2)
+        self.entry_min_size.grid(row=5, column=0, columnspan=2)
         self.entry_min_size.insert(0, str(self.min_size))
 
         self.label_threshold = tk.Label(self.root, text="Межа між 0 і 1:  [0:255]")
-        self.label_threshold.grid(row=4, column=0, columnspan=2)
+        self.label_threshold.grid(row=6, column=0, columnspan=2)
         self.entry_threshold = tk.Entry(self.root)
-        self.entry_threshold.grid(row=5, column=0, columnspan=2)
-        self.entry_threshold.insert(0, str(self.threshold))
+        self.entry_threshold.grid(row=7, column=0, columnspan=2)
+        self.entry_threshold.insert(0, str(self.threshold_N))
 
         self.update_value_button = tk.Button(self.root, text="Оновити параметри", command=self.update_entry_value)
-        self.update_value_button.grid(row=6, column=0, columnspan=2)
+        self.update_value_button.grid(row=8, column=0, columnspan=2)
         self.save_button = tk.Button(self.root, text="Зберегти у файл", command=self.resize_and_save)
-        self.save_button.grid(row=7, column=0, columnspan=2)
+        self.save_button.grid(row=9, column=0, columnspan=2)
 
         self.is_classification = tk.IntVar()
         self.checkbox = tk.Checkbutton(self.root, text="Класифікувати", variable=self.is_classification)
-        self.checkbox.grid(row=8, column=0, columnspan=2)
+        self.checkbox.grid(row=10, column=0, columnspan=2)
 
         self.load_standards()
         self.update_entry_value()
-        # self.update_frame()  # no timer
+        self.update_frame()  # no timer
         # self.update_frame_2()  # long timer
-        self.update_frame_3()  # short timer
+        # self.update_frame_3()  # short timer
 
         # Функція для завершення програми при закритті вікна
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -98,27 +109,47 @@ class App:
         if ret:
             # завантажити кольорове зображення з камери
             self.image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             # Конвертувати кадр в чорно-білий
+            self.gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
             self.binarize()
+            self.segmentation_1()
+            self.segmentation_2()
+            # self.one_bit_image_1 = self.one_bit_image
+            # self.one_bit_image_2 = self.one_bit_image
+
             # забрати чорне по краях
-            self.highlight_edge_connected_region()
+            self.highlight_edge_connected_region(self.one_bit_image)
+            self.highlight_edge_connected_region(self.one_bit_image_1)
+            self.highlight_edge_connected_region(self.one_bit_image_2)
+
             # розпізнавати об'єкти
-            self.find_objects()
+            self.find_objects(self.one_bit_image)
+            self.find_objects(self.one_bit_image_1)
+            # self.find_objects(self.one_bit_image_2)
+
             # знайти координати усіх прямокутників.
             self.find_rectangles_borders()
             # Намалювати прямокутник на кадрі
             self.draw_rectangles()
+
             # класифікація об'єктів
             if self.is_classification.get() == 1:
                 self.classify()
 
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
+            photo_bw_1 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_1))
+            photo_bw_2 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_2))
 
-            self.left_image.config(image=photo)
-            self.left_image.image = photo
-            self.right_image.config(image=photo_bw)
-            self.right_image.image = photo_bw
+            self.image_1.config(image=photo)
+            self.image_1.image = photo
+            self.image_2.config(image=photo_bw)
+            self.image_2.image = photo_bw
+            self.image_3.config(image=photo_bw_1)
+            self.image_3.image = photo_bw_1
+            self.image_4.config(image=photo_bw_2)
+            self.image_4.image = photo_bw_2
 
         self.root.after(self.frame_delay, self.update_frame)
 
@@ -166,10 +197,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.left_image.config(image=photo)
-            self.left_image.image = photo
-            self.right_image.config(image=photo_bw)
-            self.right_image.image = photo_bw
+            self.image_1.config(image=photo)
+            self.image_1.image = photo
+            self.image_2.config(image=photo_bw)
+            self.image_2.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_2)
 
@@ -194,29 +225,43 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.left_image.config(image=photo)
-            self.left_image.image = photo
-            self.right_image.config(image=photo_bw)
-            self.right_image.image = photo_bw
+            self.image_1.config(image=photo)
+            self.image_1.image = photo
+            self.image_2.config(image=photo_bw)
+            self.image_2.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_3)
 
-    def binarize(self):  # робить зображення чорно-білим, межа по self.threshold
-        gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        self.one_bit_image = np.where(gray_image > self.threshold, self.WHITE, self.BLACK)
+    def binarize(self):  # робить зображення чорно-білим, межа по self.threshold_N
+        self.one_bit_image = np.where(self.gray_image > self.threshold_N, self.WHITE, self.BLACK)
 
-    def highlight_edge_connected_region(self):  # забирає чорні об'єкти які торкаються країв todo speed up
+
+    def segmentation_1(self):
+        blur = cv2.GaussianBlur(self.gray_image,(3,3),0)
+        self.one_bit_image_1 = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+
+        # self.one_bit_image_1 = cv2.adaptiveThreshold(self.gray_image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+        pass
+
+    def segmentation_2(self):
+        ret, self.one_bit_image_2 = cv2.threshold(self.gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # blur = cv2.GaussianBlur(self.gray_image,(5,5),0)
+        # ret, self.one_bit_image_2 = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        pass
+
+    def highlight_edge_connected_region(self, obi):  # забирає чорні об'єкти які торкаються країв todo speed up
         # Get image dimensions
-        width, height = self.one_bit_image.shape
+        width, height = obi.shape
 
         # Function for flood-filling a connected black region
         def boundary_fill(x, y):
             stack = [(x, y)]
             while stack:
                 x, y = stack.pop()
-                if x < 0 or x >= width or y < 0 or y >= height or self.one_bit_image[x, y] != self.BLACK:
+                if x < 0 or x >= width or y < 0 or y >= height or obi[x, y] != self.BLACK:
                     continue
-                self.one_bit_image[x, y] = self.EDGE
+                obi[x, y] = self.EDGE
                 stack.append((x - 1, y))
                 stack.append((x + 1, y))
                 stack.append((x, y - 1))
@@ -231,17 +276,17 @@ class App:
             boundary_fill(0, j)
             boundary_fill(width - 1, j)
 
-    def find_objects(self):  # розділяє чорні об'єкти (0) на різні об'єкти (1,2,3,4...) todo speed up too
-        width, height = self.one_bit_image.shape
+    def find_objects(self, obi):  # розділяє чорні об'єкти (0) на різні об'єкти (1,2,3,4...) todo speed up too
+        width, height = obi.shape
 
         def fill_objects(x, y, prev_color, fill_color):
             stack = [(x, y)]
             count = 0
             while stack:
                 x, y = stack.pop()
-                if x < 0 or x >= width or y < 0 or y >= height or self.one_bit_image[x, y] != prev_color:
+                if x < 0 or x >= width or y < 0 or y >= height or obi[x, y] != prev_color:
                     continue
-                self.one_bit_image[x, y] = fill_color
+                obi[x, y] = fill_color
                 count += 1
                 stack.append((x - 1, y))
                 stack.append((x + 1, y))
@@ -252,7 +297,7 @@ class App:
         color = np.uint8(1)  # чорний, але трішки інший для кожного об'єкту
         for i in range(1, width - 1):  # крайні лінії гарантовано не чорні, тому 1 і -1
             for j in range(1, height - 1):
-                if self.one_bit_image[i, j] < self.EDGE:  # якщо це не фон
+                if obi[i, j] < self.EDGE:  # якщо це не фон
                     size = fill_objects(i, j, self.BLACK, color)  # виділяємо об'єкт
                     if size > self.min_size:  # якщо об'єкт великий, то переходимо до наступного
                         color += self.ONE
@@ -363,7 +408,7 @@ class App:
         if 0 <= min_size <= 5000:
             self.min_size = min_size
         if 0 <= threshold <= 255:
-            self.threshold = threshold
+            self.threshold_N = threshold
 
     def on_closing(self):
         self.cap.release()
