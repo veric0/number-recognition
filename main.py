@@ -21,7 +21,7 @@ class App:
 
         # налаштування:
         self.min_size = 100             # мінімальний розмір числа в пікселях [0:]
-        self.threshold_N = 120            # межа між 0 і 1. [0; 255]
+        self.threshold_N = 80            # межа між 0 і 1. [0; 255]
         self.scaled_size = (40, 30)     # розмір вихідного зображення
         self.line_color = (0, 255, 0)   # колір рамки навколо об'єктів
         self.text_color = (255, 0, 0)   # колір рамки навколо об'єктів
@@ -58,42 +58,51 @@ class App:
 
         self.left_label = tk.Label(self.root, text="Зображення з камери:")
         self.left_label.grid(row=0, column=0)
-        self.right_label = tk.Label(self.root, text="Global thresholding:")
+        self.right_label = tk.Label(self.root, text="1 Global thresholding:")
         self.right_label.grid(row=0, column=1)
-        self.left_label = tk.Label(self.root, text="Adaptive mean thresholding:")
+        self.right_label = tk.Label(self.root, text="2 Adaptive Gaussian thresholding:")
+        self.right_label.grid(row=0, column=2)
+        self.left_label = tk.Label(self.root, text="3 Adaptive mean thresholding:")
         self.left_label.grid(row=2, column=0)
-        self.right_label = tk.Label(self.root, text="Otsu's thresholding:")
+        self.right_label = tk.Label(self.root, text="4 Otsu's thresholding:")
         self.right_label.grid(row=2, column=1)
+        self.right_label = tk.Label(self.root, text="5 Parker's thresholding:")
+        self.right_label.grid(row=2, column=2)
 
+        self.image_0 = tk.Label(self.root)
+        self.image_0.grid(row=1, column=0)
         self.image_1 = tk.Label(self.root)
-        self.image_1.grid(row=1, column=0)
+        self.image_1.grid(row=1, column=1)
         self.image_2 = tk.Label(self.root)
-        self.image_2.grid(row=1, column=1)
+        self.image_2.grid(row=1, column=2)
+
         self.image_3 = tk.Label(self.root)
         self.image_3.grid(row=3, column=0)
         self.image_4 = tk.Label(self.root)
         self.image_4.grid(row=3, column=1)
+        self.image_5 = tk.Label(self.root)
+        self.image_5.grid(row=3, column=2)
 
         self.label_min_size = tk.Label(self.root, text="Мінімальний розмір об'єкта в пікселях:  [0:]")
-        self.label_min_size.grid(row=4, column=0, columnspan=2)
+        self.label_min_size.grid(row=4, column=0, columnspan=3)
         self.entry_min_size = tk.Entry(self.root)
-        self.entry_min_size.grid(row=5, column=0, columnspan=2)
+        self.entry_min_size.grid(row=5, column=0, columnspan=3)
         self.entry_min_size.insert(0, str(self.min_size))
 
         self.label_threshold = tk.Label(self.root, text="Межа між 0 і 1:  [0:255]")
-        self.label_threshold.grid(row=6, column=0, columnspan=2)
+        self.label_threshold.grid(row=6, column=0, columnspan=3)
         self.entry_threshold = tk.Entry(self.root)
-        self.entry_threshold.grid(row=7, column=0, columnspan=2)
+        self.entry_threshold.grid(row=7, column=0, columnspan=3)
         self.entry_threshold.insert(0, str(self.threshold_N))
 
         self.update_value_button = tk.Button(self.root, text="Оновити параметри", command=self.update_entry_value)
-        self.update_value_button.grid(row=8, column=0, columnspan=2)
+        self.update_value_button.grid(row=8, column=0, columnspan=3)
         self.save_button = tk.Button(self.root, text="Зберегти у файл", command=self.resize_and_save)
-        self.save_button.grid(row=9, column=0, columnspan=2)
+        self.save_button.grid(row=9, column=0, columnspan=3)
 
         self.is_classification = tk.IntVar()
         self.checkbox = tk.Checkbutton(self.root, text="Класифікувати", variable=self.is_classification)
-        self.checkbox.grid(row=10, column=0, columnspan=2)
+        self.checkbox.grid(row=10, column=0, columnspan=3)
 
         self.load_standards()
         self.update_entry_value()
@@ -115,6 +124,8 @@ class App:
             self.binarize()
             self.segmentation_1()
             self.segmentation_2()
+            self.segmentation_3()
+            self.segmentation_4()
             # self.one_bit_image_1 = self.one_bit_image
             # self.one_bit_image_2 = self.one_bit_image
 
@@ -122,11 +133,15 @@ class App:
             self.highlight_edge_connected_region(self.one_bit_image)
             self.highlight_edge_connected_region(self.one_bit_image_1)
             self.highlight_edge_connected_region(self.one_bit_image_2)
+            self.highlight_edge_connected_region(self.one_bit_image_4)
+            self.highlight_edge_connected_region(self.one_bit_image_3)
 
             # розпізнавати об'єкти
             self.find_objects(self.one_bit_image)
             self.find_objects(self.one_bit_image_1)
             # self.find_objects(self.one_bit_image_2)
+            self.find_objects(self.one_bit_image_3)
+            self.find_objects(self.one_bit_image_4)
 
             # знайти координати усіх прямокутників.
             self.find_rectangles_borders()
@@ -141,15 +156,22 @@ class App:
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
             photo_bw_1 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_1))
             photo_bw_2 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_2))
+            photo_bw_3 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_3))
+            photo_bw_4 = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image_4))
 
-            self.image_1.config(image=photo)
-            self.image_1.image = photo
-            self.image_2.config(image=photo_bw)
-            self.image_2.image = photo_bw
+            self.image_0.config(image=photo)
+            self.image_0.image = photo
+            self.image_1.config(image=photo_bw)
+            self.image_1.image = photo_bw
+            self.image_2.config(image=photo_bw_3)
+            self.image_2.image = photo_bw_3
+
             self.image_3.config(image=photo_bw_1)
             self.image_3.image = photo_bw_1
             self.image_4.config(image=photo_bw_2)
             self.image_4.image = photo_bw_2
+            self.image_5.config(image=photo_bw_4)
+            self.image_5.image = photo_bw_4
 
         self.root.after(self.frame_delay, self.update_frame)
 
@@ -197,10 +219,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.image_1.config(image=photo)
-            self.image_1.image = photo
-            self.image_2.config(image=photo_bw)
-            self.image_2.image = photo_bw
+            self.image_0.config(image=photo)
+            self.image_0.image = photo
+            self.image_1.config(image=photo_bw)
+            self.image_1.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_2)
 
@@ -225,10 +247,10 @@ class App:
             photo = ImageTk.PhotoImage(image=Image.fromarray(self.image))
             photo_bw = ImageTk.PhotoImage(image=Image.fromarray(self.one_bit_image))
 
-            self.image_1.config(image=photo)
-            self.image_1.image = photo
-            self.image_2.config(image=photo_bw)
-            self.image_2.image = photo_bw
+            self.image_0.config(image=photo)
+            self.image_0.image = photo
+            self.image_1.config(image=photo_bw)
+            self.image_1.image = photo_bw
 
         self.root.after(self.frame_delay, self.update_frame_3)
 
@@ -236,7 +258,7 @@ class App:
         self.one_bit_image = np.where(self.gray_image > self.threshold_N, self.WHITE, self.BLACK)
 
 
-    def segmentation_1(self):
+    def segmentation_1(self): # 3 parkers method
         blur = cv2.GaussianBlur(self.gray_image,(3,3),0)
         self.one_bit_image_1 = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
 
@@ -248,6 +270,18 @@ class App:
 
         # blur = cv2.GaussianBlur(self.gray_image,(5,5),0)
         # ret, self.one_bit_image_2 = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        pass
+
+    def segmentation_3(self):
+        blur = cv2.GaussianBlur(self.gray_image,(3,3),0)
+        self.one_bit_image_3 = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+        pass
+
+    def segmentation_4(self):
+        self.one_bit_image_4 = cv2.adaptiveThreshold(self.gray_image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+
+        # self.one_bit_image_1 = cv2.adaptiveThreshold(self.gray_image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
         pass
 
     def highlight_edge_connected_region(self, obi):  # забирає чорні об'єкти які торкаються країв todo speed up
